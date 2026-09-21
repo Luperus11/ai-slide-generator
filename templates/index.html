@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Lecture Video Generator</title>
+    <style>
+        body { font-family: 'Tahoma', sans-serif; background: #0F172A; color: #F8FAFC; padding: 40px; display: flex; justify-content: center; }
+        .card { background: #1E293B; padding: 30px; border-radius: 12px; width: 700px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        h1 { color: #EA580C; margin-bottom: 20px; font-size: 24px; }
+        label { font-weight: bold; display: block; margin-top: 15px; color: #94A3B8; }
+        input { width: 100%; padding: 12px; margin-top: 8px; border-radius: 6px; border: 1px solid #334155; background: #0F172A; color: #FFF; box-sizing: border-box; font-size: 16px; }
+        button { margin-top: 25px; width: 100%; padding: 14px; background: #EA580C; border: none; color: white; font-weight: bold; font-size: 16px; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #C2410C; }
+        #status { margin-top: 15px; color: #38BDF8; font-weight: bold; text-align: center; }
+        video { width: 100%; margin-top: 20px; border-radius: 8px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🎬 AI สร้างวิดีโอสอนอัตโนมัติ (10 สไลด์ + พากย์เสียง)</h1>
+    
+    <label>หัวข้อวิชา / เรื่องที่จะสอน:</label>
+    <input type="text" id="topic" value="สมการอนุพันธ์สำหรับวิศวกรรม" placeholder="กรอกหัวข้อที่ต้องการสร้างวิดีโอ...">
+
+    <button onclick="generateVideo()">🚀 สร้างวิดีโอสอนเลย (10 สไลด์)</button>
+
+    <div id="status"></div>
+    <video id="videoPlayer" controls></video>
+</div>
+
+<script>
+async function generateVideo() {
+    const topic = document.getElementById('topic').value;
+    const status = document.getElementById('status');
+    const videoPlayer = document.getElementById('videoPlayer');
+
+    if (!topic.trim()) {
+        alert("กรุณากรอกหัวข้อวิชาด้วยครับ");
+        return;
+    }
+
+    status.innerText = "⏳ กำลังสร้างสไลด์ 10 หน้า พากย์เสียงภาษาไทย และเรนเดอร์วิดีโอ... (โปรดรอสักครู่)";
+    videoPlayer.style.display = "none";
+
+    try {
+        const response = await fetch('/generate_video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            status.innerText = "✅ สร้างวิดีโอ 10 สไลด์สำเร็จเรียบร้อย!";
+            videoPlayer.src = result.video_url + '?t=' + new Date().getTime();
+            videoPlayer.style.display = "block";
+            videoPlayer.play();
+        } else {
+            status.innerText = "❌ เกิดข้อผิดพลาด: " + (result.error || "ในการสร้างวิดีโอ");
+        }
+    } catch (err) {
+        status.innerText = "❌ เกิดข้อผิดพลาดในการเชื่อมต่อระบบ: " + err.message;
+        console.error(err);
+    }
+}
+</script>
+
+</body>
+</html>

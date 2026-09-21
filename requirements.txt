@@ -1,0 +1,6 @@
+Flask
+gTTS
+moviepy
+matplotlib
+google-genai
+gunicorn
