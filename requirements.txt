@@ -1,8 +1,8 @@
 Flask
-gTTS
-moviepy
-matplotlib
-google-genai
 gunicorn
+google-generativeai
 pypdf
 python-docx
+matplotlib
+requests
+moviepy
