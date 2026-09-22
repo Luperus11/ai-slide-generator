@@ -25,7 +25,9 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-COLAB_TTS_URL = "https://1c34-34-16-245-227.ngrok-free.app/clone"
+# อ่าน URL จาก Environment Variable ของ Render ถ้าไม่มีจะใช้ ngrok URL ล่าสุด
+DEFAULT_COLAB_URL = "https://412a-35-247-133-183.ngrok-free.app/clone"
+COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
@@ -77,7 +79,6 @@ def generate_slides_from_gemini(topic_or_content):
         return None
 
     try:
-        # ใช้ SDK ใหม่ google-genai ที่รองรับคีย์ขึ้นต้นด้วย AQ...
         client = genai.Client(api_key=GEMINI_API_KEY)
         truncated_input = topic_or_content[:12000]
 
