@@ -4,3 +4,5 @@ moviepy
 matplotlib
 google-genai
 gunicorn
+pypdf
+python-docx
