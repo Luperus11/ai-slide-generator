@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
-import google.generativeai as genai
+from google import genai
 from pypdf import PdfReader
 from docx import Document
 
@@ -25,13 +25,9 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-# URL ของ Colab gTTS Server
 COLAB_TTS_URL = "https://1c34-34-16-245-227.ngrok-free.app/clone"
 
-# ดึง Gemini API Key จาก Render
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -48,15 +44,12 @@ def setup_thai_font():
 setup_thai_font()
 
 def clean_extracted_pdf_text(text):
-    """คลีนขยะและเลขหน้าออกจากข้อความ PDF ก่อนนำไปประมวลผล"""
-    # ลบแพทเทิร์นขยะเช่น --- หน้า 1 ---, Page 1 of 10, Header ขยะ
     text = re.sub(r'---\s*หน้า\s*\d+\s*---', '', text)
     text = re.sub(r'Page\s*\d+\s*of\s*\d+', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\n+', '\n', text)
     return text.strip()
 
 def extract_text_from_file(file):
-    """อ่านเนื้อหาข้อความจากไฟล์ PDF, Word หรือ TXT"""
     filename = file.filename.lower()
     extracted_text = ""
     try:
@@ -79,45 +72,48 @@ def extract_text_from_file(file):
     return clean_extracted_pdf_text(extracted_text)
 
 def generate_slides_from_gemini(topic_or_content):
-    """ส่งเนื้อหาจากไฟล์ให้ Gemini สรุปและสกัดข้อมูลเนื้อหาจริง 10 สไลด์"""
     if not GEMINI_API_KEY:
         print("⚠️ Warning: ไม่พบ GEMINI_API_KEY")
         return None
 
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    truncated_input = topic_or_content[:12000]
-
-    prompt = f"""
-    คุณคืออาจารย์มหาวิทยาลัยผู้เชี่ยวชาญ
-    จงนำเนื้อหาเอกสารวิชาการต่อไปนี้ มาสกัดความรู้ สรุปสูตร คำนวณ แนวคิดหลัก และจัดทำเป็นสไลด์การสอนจำนวน 10 สไลด์เต็ม:
-
-    === เนื้อหาเอกสารต้นฉบับ ===
-    "{truncated_input}"
-    ==========================
-
-    ข้อกำหนดสำคัญมาก:
-    1. ดึงสาระสำคัญ สัญลักษณ์ทางคณิตศาสตร์ สูตร และรายละเอียดจริงจากเอกสารมาใส่ ห้ามใช้คำกว้างๆ เช่น "ประเด็นสำคัญ" หรือ "รายละเอียดเนื้อหา" เด็ดขาด
-    2. sub_title ให้สรุปชื่อหัวข้อย่อยสั้นๆ ไม่เกิน 6-8 คำ (ห้ามเอาเลขหน้าหรือข้อความขยะมาใส่)
-    3. points ในแต่ละสไลด์ ต้องมี 4 ข้อเสมอ ในรูปแบบ "หัวข้อเน้นย้ำ: อธิบายรายละเอียดความรู้ ความหมาย หรือสูตรที่เกี่ยวข้องอย่างชัดเจน"
-    4. narration ให้เขียนบทบรรยายสอนภาษาไทยแบบเป็นธรรมชาติ สรุปอธิบายสไลด์นั้นๆ อย่างกระชับ
-
-    ตอบกลับเป็น JSON Array เท่านั้น (ห้ามใส่คำว่า ```json):
-    [
-      {{
-        "sub_title": "1. ชื่อหัวข้อย่อยสั้นกระชับ",
-        "points": [
-          "คำศัพท์/หัวข้อ 1: อธิบายความหมายและรายละเอียดความรู้จริงจากเอกสาร",
-          "คำศัพท์/หัวข้อ 2: อธิบายรายละเอียดความรู้จริงจากเอกสาร",
-          "สูตร/แนวคิด 3: อธิบายรายละเอียดและวิธีการนำไปใช้",
-          "ข้อสรุป 4: สรุปสาระสำคัญประจำสไลด์นี้"
-        ],
-        "narration": "บทบรรยายภาษาไทยพากย์สอนเนื้อหาสไลด์นี้"
-      }}
-    ]
-    """
-
     try:
-        response = model.generate_content(prompt)
+        # ใช้ SDK ใหม่ google-genai ที่รองรับคีย์ขึ้นต้นด้วย AQ...
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        truncated_input = topic_or_content[:12000]
+
+        prompt = f"""
+        คุณคืออาจารย์มหาวิทยาลัยผู้เชี่ยวชาญ
+        จงนำเนื้อหาเอกสารวิชาการต่อไปนี้ มาสกัดความรู้ สรุปสูตร คำนวณ แนวคิดหลัก และจัดทำเป็นสไลด์การสอนจำนวน 10 สไลด์เต็ม:
+
+        === เนื้อหาเอกสารต้นฉบับ ===
+        "{truncated_input}"
+        ==========================
+
+        ข้อกำหนดสำคัญมาก:
+        1. ดึงสาระสำคัญ สัญลักษณ์ทางคณิตศาสตร์ สูตร และรายละเอียดจริงจากเอกสารมาใส่ ห้ามใช้คำกว้างๆ เช่น "ประเด็นสำคัญ" หรือ "รายละเอียดเนื้อหา" เด็ดขาด
+        2. sub_title ให้สรุปชื่อหัวข้อย่อยสั้นๆ ไม่เกิน 6-8 คำ (ห้ามเอาเลขหน้าหรือข้อความขยะมาใส่)
+        3. points ในแต่ละสไลด์ ต้องมี 4 ข้อเสมอ ในรูปแบบ "หัวข้อเน้นย้ำ: อธิบายรายละเอียดความรู้ ความหมาย หรือสูตรที่เกี่ยวข้องอย่างชัดเจน"
+        4. narration ให้เขียนบทบรรยายสอนภาษาไทยแบบเป็นธรรมชาติ สรุปอธิบายสไลด์นั้นๆ อย่างกระชับ
+
+        ตอบกลับเป็น JSON Array เท่านั้น (ห้ามใส่คำว่า ```json):
+        [
+          {{
+            "sub_title": "1. ชื่อหัวข้อย่อยสั้นกระชับ",
+            "points": [
+              "คำศัพท์/หัวข้อ 1: อธิบายความหมายและรายละเอียดความรู้จริงจากเอกสาร",
+              "คำศัพท์/หัวข้อ 2: อธิบายรายละเอียดความรู้จริงจากเอกสาร",
+              "สูตร/แนวคิด 3: อธิบายรายละเอียดและวิธีการนำไปใช้",
+              "ข้อสรุป 4: สรุปสาระสำคัญประจำสไลด์นี้"
+            ],
+            "narration": "บทบรรยายภาษาไทยพากย์สอนเนื้อหาสไลด์นี้"
+          }}
+        ]
+        """
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
         raw_response = response.text.strip()
         clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
         slides_data = json.loads(clean_json_str)
@@ -127,7 +123,6 @@ def generate_slides_from_gemini(topic_or_content):
         return None
 
 def clean_text_for_speech(text):
-    """แปลงข้อความสัญลักษณ์ให้เป็นคำอ่านสำหรับเสียงพากย์"""
     text = re.sub(r'^\d+\.\d*\s*', '', text)
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = text.replace("$", "").replace("{", "").replace("}", "").replace("^", " กำลัง ")
@@ -137,46 +132,35 @@ def clean_text_for_speech(text):
     return text
 
 def generate_slide_image(topic, slide_data, slide_num, total_slides, output_path):
-    """วาดสไลด์ จัดระเบียบเลย์เอาต์ ป้องกันข้อความทับซ้อน"""
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=100)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 56.25)
     ax.axis("off")
 
-    # พื้นหลังสไลด์
     bg = mpatches.Rectangle((0, 0), 100, 56.25, facecolor="#F8FAFC", edgecolor="#1E293B", linewidth=1.5)
     ax.add_patch(bg)
 
-    # 1. Header Section
     raw_subtitle = slide_data.get("sub_title", "")
-    # ตัดหัวข้อถ้ายาวเกินไป ป้องกันทับเลขหน้า
     wrapped_subtitle = textwrap.shorten(raw_subtitle, width=45, placeholder="...")
     
     ax.text(6, 51.5, f"{wrapped_subtitle}", fontsize=16, weight="bold", color="#0F172A", ha="left", va="center")
     ax.text(94, 51.5, f"{slide_num:02d}/{total_slides:02d}", fontsize=13, weight="bold", color="#64748B", ha="right", va="center")
     ax.plot([4, 96], [47, 47], color="#EA580C", linewidth=3.5)
 
-    # 2. Card Content Area
     card = mpatches.FancyBboxPatch((4, 7.5), 92, 37.5, boxstyle="round,pad=0,rounding_size=1.2", facecolor="#FFFFFF", edgecolor="#CBD5E1")
     ax.add_patch(card)
 
-    # 3. Render Points & Alignment
     curr_y = 40.5
     points = slide_data.get("points", [])
     
     for pt in points:
-        # วาดจุด Bullet
         ax.text(7.5, curr_y, "•", fontsize=15, color="#EA580C", weight="bold", va="top")
-        
         if ":" in pt:
             parts = pt.split(":", 1)
             title_part = parts[0].strip() + ":"
             desc_part = parts[1].strip()
             
-            # วาดหัวข้อส่วนสั้น (สีส้ม) ฝั่งซ้าย
             ax.text(10, curr_y, title_part, fontsize=11.5, color="#EA580C", weight="bold", va="top")
-            
-            # ล็อกพิกัด X = 32.0 สำหรับรายละเอียดสีดำ ให้ตรงกันเป็นแนวเดียว
             wrapped_desc = textwrap.fill(desc_part, width=54)
             ax.text(32.0, curr_y, wrapped_desc, fontsize=11, color="#1E293B", va="top", linespacing=1.3)
             
@@ -188,7 +172,6 @@ def generate_slide_image(topic, slide_data, slide_num, total_slides, output_path
             num_lines = wrapped_pt.count('\n') + 1
             curr_y -= (num_lines * 2.6) + 3.0
 
-    # 4. Footer Section
     clean_topic_footer = textwrap.shorten(topic, width=55, placeholder="...")
     ax.text(4, 2.5, clean_topic_footer, fontsize=9.5, color="#94A3B8", va="center")
 
@@ -208,7 +191,6 @@ def generate_video():
         file_text = ""
         if uploaded_file and uploaded_file.filename != "":
             file_text = extract_text_from_file(uploaded_file)
-            print(f"---> [DEBUG] อ่านและคลีนข้อความไฟล์สำเร็จ ความยาว: {len(file_text)} ตัวอักษร")
             if not topic:
                 topic = os.path.splitext(uploaded_file.filename)[0]
 
@@ -223,7 +205,6 @@ def generate_video():
 
         bullet_list = generate_slides_from_gemini(input_content)
         
-        # กรณี Gemini ดึงข้อมูลไม่ได้ ให้แจ้ง Error ชัดเจน
         if not bullet_list:
             return jsonify({
                 "success": False, 
@@ -233,9 +214,7 @@ def generate_video():
         total_slides = len(bullet_list)
         video_clips = []
 
-        print(f"\n---> [Session {user_session_id}] เริ่มสร้างวิดีโอเรื่อง: {topic}")
         for idx, slide_data in enumerate(bullet_list, start=1):
-            print(f"---> [Session {user_session_id}] สร้างสไลด์ที่ {idx}/{total_slides}...")
             img_path = os.path.join(user_build_dir, f"slide_{idx}.png")
             audio_path = os.path.join(user_build_dir, f"audio_{idx}.wav")
 
@@ -265,7 +244,6 @@ def generate_video():
                 
             video_clips.append(image_clip)
 
-        print(f"---> [Session {user_session_id}] กำลังรวมคลิปวิดีโอ...")
         final_clip = concatenate_videoclips(video_clips, method="compose")
         output_video_path = os.path.join(user_build_dir, "final_output.mp4")
         
@@ -278,8 +256,6 @@ def generate_video():
             threads=4,
             logger=None
         )
-        
-        print(f"---> [Session {user_session_id}] เสร็จเรียบร้อย 100%!\n")
 
         web_video_url = output_video_path.replace("\\", "/")
         return jsonify({"success": True, "video_url": f"/{web_video_url}"})
