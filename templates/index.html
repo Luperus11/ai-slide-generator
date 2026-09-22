@@ -8,7 +8,8 @@
         .card { background: #1E293B; padding: 30px; border-radius: 12px; width: 700px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
         h1 { color: #EA580C; margin-bottom: 20px; font-size: 24px; }
         label { font-weight: bold; display: block; margin-top: 15px; color: #94A3B8; }
-        input { width: 100%; padding: 12px; margin-top: 8px; border-radius: 6px; border: 1px solid #334155; background: #0F172A; color: #FFF; box-sizing: border-box; font-size: 16px; }
+        input[type="text"], input[type="file"] { width: 100%; padding: 12px; margin-top: 8px; border-radius: 6px; border: 1px solid #334155; background: #0F172A; color: #FFF; box-sizing: border-box; font-size: 15px; }
+        .divider { text-align: center; margin: 15px 0; color: #64748B; font-weight: bold; }
         button { margin-top: 25px; width: 100%; padding: 14px; background: #EA580C; border: none; color: white; font-weight: bold; font-size: 16px; border-radius: 6px; cursor: pointer; }
         button:hover { background: #C2410C; }
         #status { margin-top: 15px; color: #38BDF8; font-weight: bold; text-align: center; }
@@ -18,41 +19,54 @@
 <body>
 
 <div class="card">
-    <h1>🎬 AI สร้างวิดีโอสอนอัตโนมัติ (10 สไลด์ + พากย์เสียง)</h1>
+    <h1>🎬 AI สร้างวิดีโอสอนอัตโนมัติ (จากหัวข้อหรือไฟล์เอกสาร)</h1>
     
-    <label>หัวข้อวิชา / เรื่องที่จะสอน:</label>
-    <input type="text" id="topic" value="สมการอนุพันธ์สำหรับวิศวกรรม" placeholder="กรอกหัวข้อที่ต้องการสร้างวิดีโอ...">
+    <form id="videoForm" enctype="multipart/form-data">
+        <label>1. หัวข้อวิชา / เรื่องที่จะสอน:</label>
+        <input type="text" name="topic" id="topic" placeholder="เช่น การแปลงลาปลาซ หรือปล่อยว่างถ้าแนบไฟล์...">
 
-    <button onclick="generateVideo()">🚀 สร้างวิดีโอสอนเลย (10 สไลด์)</button>
+        <div class="divider">--- หรือ ---</div>
+
+        <label>2. แนบไฟล์เนื้อหาเอกสาร (.pdf, .docx, .txt):</label>
+        <input type="file" name="file" id="file" accept=".pdf,.docx,.txt">
+
+        <button type="submit" id="submitBtn">🚀 เริ่มสร้างวิดีโอสอนเลย</button>
+    </form>
 
     <div id="status"></div>
     <video id="videoPlayer" controls></video>
 </div>
 
 <script>
-async function generateVideo() {
-    const topic = document.getElementById('topic').value;
+document.getElementById('videoForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
     const status = document.getElementById('status');
     const videoPlayer = document.getElementById('videoPlayer');
+    const submitBtn = document.getElementById('submitBtn');
 
-    if (!topic.trim()) {
-        alert("กรุณากรอกหัวข้อวิชาด้วยครับ");
+    const topic = document.getElementById('topic').value.trim();
+    const file = document.getElementById('file').files[0];
+
+    if (!topic && !file) {
+        alert("กรุณากรอกหัวข้อ หรือเลือกไฟล์แนบอย่างใดอย่างหนึ่งด้วยครับ");
         return;
     }
 
-    status.innerText = "⏳ กำลังสร้างสไลด์ 10 หน้า พากย์เสียงภาษาไทย และเรนเดอร์วิดีโอ... (โปรดรอสักครู่)";
+    status.innerText = "⏳ กำลังอ่านเนื้อหา สรุปเป็นสไลด์ พากย์เสียงภาษาไทย และเรนเดอร์วิดีโอ... (โปรดรอสักครู่)";
     videoPlayer.style.display = "none";
+    submitBtn.disabled = true;
+
+    const formData = new FormData(this);
 
     try {
         const response = await fetch('/generate_video', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ topic })
+            body: formData
         });
         const result = await response.json();
 
         if (result.success) {
-            status.innerText = "✅ สร้างวิดีโอ 10 สไลด์สำเร็จเรียบร้อย!";
+            status.innerText = "✅ สร้างวิดีโอสำเร็จเรียบร้อย!";
             videoPlayer.src = result.video_url + '?t=' + new Date().getTime();
             videoPlayer.style.display = "block";
             videoPlayer.play();
@@ -62,8 +76,10 @@ async function generateVideo() {
     } catch (err) {
         status.innerText = "❌ เกิดข้อผิดพลาดในการเชื่อมต่อระบบ: " + err.message;
         console.error(err);
+    } finally {
+        submitBtn.disabled = false;
     }
-}
+});
 </script>
 
 </body>
