@@ -3,6 +3,7 @@ import glob
 import re
 import uuid
 import textwrap
+import json
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -10,6 +11,9 @@ import matplotlib.patches as mpatches
 from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
 from gtts import gTTS
+import google.generativeai as genai
+from pypdf import PdfReader
+from docx import Document
 
 try:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
@@ -20,6 +24,11 @@ app = Flask(__name__)
 
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
+
+# ตั้งค่า Gemini API Key
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -35,130 +44,89 @@ def setup_thai_font():
 
 setup_thai_font()
 
+def extract_text_from_file(file):
+    """อ่านเนื้อหาข้อความจากไฟล์ PDF, Word หรือ TXT"""
+    filename = file.filename.lower()
+    extracted_text = ""
+    try:
+        if filename.endswith('.pdf'):
+            reader = PdfReader(file)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text + "\n"
+        elif filename.endswith('.docx'):
+            doc = Document(file)
+            for para in doc.paragraphs:
+                extracted_text += para.text + "\n"
+        elif filename.endswith('.txt'):
+            extracted_text = file.read().decode('utf-8')
+    except Exception as e:
+        print(f"File reading error: {e}")
+    return extracted_text.strip()
+
+def generate_slides_from_gemini(topic_or_content):
+    """ส่งเนื้อหาให้ Gemini AI สรุปและสร้างเป็นสไลด์ 5-10 หน้า"""
+    if not GEMINI_API_KEY:
+        return None
+
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    truncated_input = topic_or_content[:4000]
+
+    prompt = f"""
+    คุณคือผู้เชี่ยวชาญด้านการสร้างวิดีโอสื่อการสอน
+    โปรดสรุปเนื้อหาต่อไปนี้ แล้วจัดทำเป็นบทเรียนการสอนภาษาไทยจำนวน 5 ถึง 10 สไลด์:
+    "{truncated_input}"
+
+    ตอบกลับในรูปแบบ JSON Array เท่านั้น ห้ามใส่ markdown code blocks (ไม่ต้องใส่ ```json):
+    [
+      {{
+        "sub_title": "1. ชื่อหัวข้อย่อยสไลด์",
+        "points": [
+          "ประเด็นสำคัญที่ 1 (สั้นกระชับ สรุปเน้นๆ)",
+          "ประเด็นสำคัญที่ 2",
+          "ประเด็นสำคัญที่ 3"
+        ],
+        "narration": "บทบรรยายพากย์เสียงพูดภาษาไทยที่เป็นธรรมชาติ อธิบายรายละเอียดเพิ่มเติมจากประเด็นบนสไลด์อย่างเข้าใจง่าย"
+      }}
+    ]
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        raw_response = response.text.strip()
+        clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
+        slides_data = json.loads(clean_json_str)
+        return slides_data
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+        return None
+
 def auto_generate_10_outline(topic):
-    """
-    สร้างสไลด์โดยแยกส่วน:
-    - points: ข้อความสรุปสั้นๆ บนหน้าจอ
-    - narration: บทพากย์เสียงอธิบายละเอียด เป็นธรรมชาติ
-    """
+    """กรณีไม่ได้ใช้ Gemini หรือ API Key ไม่มี ให้ใช้อุตสาหกรรมสำรอง"""
     return [
         {
-            "sub_title": "1. ความรู้เบื้องต้นและนิยาม",
+            "sub_title": f"1. ความรู้เบื้องต้นเกี่ยวกับ {topic}",
             "points": [
                 f"แนวคิดพื้นฐานเกี่ยวกับ {topic} ในการวิเคราะห์ระบบ",
-                "การเปลี่ยนโดเมนจากโดเมนเวลา (t) ไปสู่โดเมนความถี่เชิงซ้อน (s)",
-                "ช่วยเปลี่ยนสมการเชิงอนุพันธ์ให้เป็นสมการพีชคณิตที่คำนวณง่ายขึ้น"
+                "การประยุกต์ใช้งานและหลักการสำคัญเบื้องต้น",
+                "ทำความเข้าใจภาพรวมกระบวนการทำงาน"
             ],
-            "narration": f"ยินดีต้อนรับสู่บทเรียนเกี่ยวกับ {topic} ครับ ในหัวข้อแรกนี้ เราจะมาดูแนวคิดพื้นฐานกันก่อน "
-                         f"จุดประสงค์หลักคือการแปลงสัญญาณหรือระบบจากโดเมนเวลา ให้อยู่ในโดเมนความถี่เชิงซ้อน s "
-                         f"ซึ่งประโยชน์ที่สำคัญมาก คือการช่วยเปลี่ยนสมการเชิงอนุพันธ์ที่ซับซ้อน ให้กลายเป็นสมการพีชคณิตธรรมดาที่แก้ไขได้ง่ายขึ้นเยอะเลยครับ"
+            "narration": f"ยินดีต้อนรับสู่บทเรียนเกี่ยวกับ {topic} ครับ ในหัวข้อแรกนี้ เราจะมาดูแนวคิดและหลักการพื้นฐานที่สำคัญกันก่อนครับ"
         },
         {
-            "sub_title": "2. สมการนิยามและการลู่เข้า",
+            "sub_title": f"2. สรุปภาพรวมของ {topic}",
             "points": [
-                "สูตรนิยามหลัก: $F(s) = \\mathcal{L}\\{f(t)\\} = \\int_{0}^{\\infty} f(t) e^{-st} dt$",
-                "เงื่อนไขการคงอยู่และการลู่เข้าของสัญญาณ (Region of Convergence)",
-                "ตัวแปรเชิงซ้อน $s = \\sigma + j\\omega$ ที่ใช้ในระบบ"
+                "การประยุกต์ใช้ในทางปฏิบัติ",
+                "ข้อดีและจุดเด่นที่สำคัญ",
+                "ข้อควรระวังในการนำไปใช้งาน"
             ],
-            "narration": "ถัดมาในส่วนของสมการนิยาม ตัวฟังก์ชัน F(s) จะหาได้จากการอินทิเกรต f(t) คูณกับ e ยกกำลังลบ st ตั้งแต่ศูนย์ถึงอินฟินิตี้ครับ "
-                         "และสิ่งสำคัญที่ต้องพิจารณาคู่กันเสมอคือ ขอบเขตการลู่เข้า หรือ ROC เพื่อให้มั่นใจว่าอินทิกรัลนี้หาค่าได้จริง "
-                         "โดยตัวแปร s นั้นจะเป็นตัวแปรเชิงซ้อนที่มีทั้งส่วนจริง ซิกมา และส่วนจินตภาพ เจโอเมกา ครับ"
-        },
-        {
-            "sub_title": "3. คุณสมบัติพื้นฐานที่สำคัญ",
-            "points": [
-                "คุณสมบัติเชิงเส้น (Linearity): $\\mathcal{L}\\{af(t)+bg(t)\\} = aF(s)+bG(s)$",
-                "การเลื่อนในโดเมนเวลา (Time Shifting): $\\mathcal{L}\\{f(t-a)u(t-a)\\} = e^{-as}F(s)$",
-                "การคูณด้วยฟังก์ชันเอ็กโปเนนเชียล: $\\mathcal{L}\\{e^{at}f(t)\\} = F(s-a)$"
-            ],
-            "narration": "มาดูคุณสมบัติพื้นฐานที่ช่วยให้เราคำนวณได้เร็วขึ้นกันครับ ข้อแรกคือคุณสมบัติเชิงเส้น ที่เราสามารถดึงค่าคงค้างูออกมาคูณข้างนอกได้เลย "
-                         "ข้อสองคือการเลื่อนในโดเมนเวลา หากสัญญาณมีความหน่วงเวลาไป a หน่วย จะเทียบเท่ากับการคูณ e ยกกำลังลบ as ในโดเมน s "
-                         "และถ้ามีการคูณด้วยเอ็กโปเนนเชียล ก็จะเป็นการเลื่อนแกน s ไปทางขวาหรือซ้ายตามค่าคงที่นั้นครับ"
-        },
-        {
-            "sub_title": "4. การแปลงอนุพันธ์และอินทิเกรต",
-            "points": [
-                "อนุพันธ์อันดับหนึ่ง: $\\mathcal{L}\\{f'(t)\\} = sF(s) - f(0)$",
-                "อนุพันธ์อันดับสอง: $\\mathcal{L}\\{f''(t)\\} = s^2F(s) - sf(0) - f'(0)$",
-                "รองรับการใส่เงื่อนไขเริ่มต้น (Initial Conditions) ของระบบ"
-            ],
-            "narration": "หัวข้อนี้ถือเป็นหัวใจสำคัญในการแก้สมการดิฟเลยครับ เมื่อเราแปลงอนุพันธ์อันดับหนึ่ง ผลลัพธ์จะได้เป็น s คูณ F(s) ลบด้วยเงื่อนไขเริ่มต้น f(0) "
-                         "และถ้าเป็นอนุพันธ์อันดับสอง ก็จะเป็น s กำลังสอง คูณ F(s) แล้วลบด้วยเงื่อนไขเริ่มต้นถัดๆ ไป "
-                         "ทำให้การคิดเงื่อนไขเริ่มต้นของระบบทำได้ง่ายและเป็นระบบมากครับ"
-        },
-        {
-            "sub_title": "5. ฟังก์ชันมาตรฐานที่ใช้บ่อย",
-            "points": [
-                "ฟังก์ชันขั้นบันได (Unit Step): $\\mathcal{L}\\{u(t)\\} = \\frac{1}{s}$",
-                "ฟังก์ชันเอ็กโปเนนเชียล: $\\mathcal{L}\\{e^{at}\\} = \\frac{1}{s-a}$",
-                "ฟังก์ชันไซน์และโคไซน์: $\\mathcal{L}\\{\\sin(\\omega t)\\} = \\frac{\\omega}{s^2+\\omega^2}$"
-            ],
-            "narration": "ในการใช้งานจริง เราไม่จำเป็นต้องอินทิเกรตใหม่ทุกครั้งครับ เพราะมีตารางตารางการแปลงมาตรฐานให้ใช้อยู่แล้ว "
-                         "เช่น ฟังก์ชันขั้นบันได u(t) แปลงได้ 1 ส่วน s, ฟังก์ชันเอ็กโปเนนเชียล ได้ 1 ส่วน s ลบ a "
-                         "รวมถึงฟังก์ชันคลื่นไซน์และโคไซน์ ที่เรานำค่าความถี่ โอเมกา ไปใช้ในสูตรสำเร็จได้ทันทีครับ"
-        },
-        {
-            "sub_title": "6. การแปลงกลับ (Inverse Transform)",
-            "points": [
-                "การหาผลเฉลยย้อนกลับสู่โดเมนเวลา $f(t) = \\mathcal{L}^{-1}\\{F(s)\\}$",
-                "เทคนิคการแยกเป็นเศษส่วนย่อย (Partial Fraction Expansion)",
-                "การพิจารณากรณีรากจริง รากซ้ำ และรากเชิงซ้อน"
-            ],
-            "narration": "หลังจากที่เราคำนวณในโดเมน s เสร็จแล้ว ขั้นตอนสุดท้ายคือการหาคำตอบกลับมายังโดเมนเวลาด้วยการแปลงกลับครับ "
-                         "เครื่องมือหลักที่เรามักใช้คือการแยกสมการออกเป็นเศษส่วนย่อย "
-                         "ซึ่งต้องแยกคิดตามลักษณะรากของตัวส่วน ว่าเป็นรากจริงที่ไม่ซ้ำกัน รากซ้ำ หรือรากที่เป็นจำนวนเชิงซ้อนครับ"
-        },
-        {
-            "sub_title": "7. การประยุกต์ใช้กับวงจรไฟฟ้า",
-            "points": [
-                "แบบจำลองอิมพีแดนซ์: $Z_R = R, \\, Z_L = sL, \\, Z_C = \\frac{1}{sC}$",
-                "วิเคราะห์ตอบสนองชั่วครู่ (Transient Response) ในวงจร RLC",
-                "การคำนวณหาแรงดันและกระแสไฟฟ้าในสภาวะต่างๆ"
-            ],
-            "narration": "ลองมาดูการประยุกต์ใช้ในงานจริงกันบ้างครับ ในงานวิศวกรรมไฟฟ้า เราจะเปลี่ยนอุปกรณ์วงจรให้กลายเป็นอิมพีแดนซ์ในโดเมน s "
-                         "โดย ตัวต้านทาน R จะคงเดิม ตัวเหนี่ยวนำ L กลายเป็น sL และตัวเก็บประจุ C กลายเป็น 1 ส่วน sC "
-                         "ช่วยให้เราวิเคราะห์พฤติกรรมชั่วครู่ของวงจร RLC และหาแรงดันกระแสได้ง่ายขึ้นมากครับ"
-        },
-        {
-            "sub_title": "8. การวิเคราะห์ระบบควบคุม",
-            "points": [
-                "ฟังก์ชันถ่ายโอน (Transfer Function): $H(s) = \\frac{Y(s)}{X(s)}$",
-                "การหาตำแหน่งจุดโพล (Poles) และซีโร่ (Zeros)",
-                "การประเมินความเสถียรของระบบจากตำแหน่งโพลบน s-plane"
-            ],
-            "narration": "ในทางระบบควบคุม ตัวแปลงนี้ใช้สร้างฟังก์ชันถ่ายโอน H(s) ซึ่งเป็นอัตราส่วนระหว่างสัญญาณเอาต์พุตต่ออินพุต "
-                         "เราสามารถหาจุดโพลและซีโร่ของระบบ เพื่อนำมาพล็อตลงบน s-plane "
-                         "และใช้บอกได้ทันทีเลยว่าระบบควบคุมของเรามีเสถียรภาพหรือไม่ครับ"
-        },
-        {
-            "sub_title": "9. เทคนิคและข้อควรระวังในการแก้ปัญหา",
-            "points": [
-                "ตรวจสอบเงื่อนไขเริ่มต้นก่อนจัดรูปสมการเสมอ",
-                "ระวังเรื่องขอบเขตการลู่เข้าเมื่อทำการแปลงกลับ",
-                "ตรวจสอบมิติและหน่วยของตัวแปรในโดเมนความถี่"
-            ],
-            "narration": "ข้อควรระวังสำคัญเวลาทำโจทย์หรือใช้งานจริงครับ อันดับแรก ต้องตรวจสอบค่าเงื่อนไขเริ่มต้นให้ดี "
-                         "อันดับที่สอง ต้องแน่ใจว่าผลลัพธ์อยู่ในขอบเขตการลู่เข้าที่ถูกต้อง "
-                         "และอย่าลืมเช็กมิติหรือหน่วยของตัวแปรในโดเมนความถี่ เพื่อป้องกันข้อผิดพลาดในการคำนวณครับ"
-        },
-        {
-            "sub_title": "10. สรุปภาพรวมการใช้งาน",
-            "points": [
-                f"{topic} ช่วยลดความซับซ้อนของการคำนวณทางคณิตศาสตร์",
-                "เปลี่ยนโจทย์อนุพันธ์ที่ซับซ้อนให้เป็นการแก้สมการพีชคณิต",
-                "เป็นเครื่องมือสำคัญในงานวิศวกรรมไฟฟ้า ควบคุม และระบบสัญญาณ"
-            ],
-            "narration": f"สรุปภาพรวมทั้งหมดเกี่ยวกับ {topic} นะครับ ถือเป็นเครื่องมือทางคณิตศาสตร์ที่มีพลังและสำคัญมากในงานวิศวกรรม "
-                         f"เพราะช่วยแปลงงานยากๆ อย่างสมการเชิงอนุพันธ์ ให้กลายเป็นสมการพีชคณิตเบสิก "
-                         f"เหมาะสำหรับนำไปประยุกต์ใช้ในระบบไฟฟ้าระบบควบคุม และการประมวลผลสัญญาณต่างๆ ครับ"
+            "narration": f"สรุปภาพรวมทั้งหมดเกี่ยวกับ {topic} นะครับ ถือเป็นเครื่องมือที่มีประโยชน์และสำคัญมากในการศึกษาวิชาการและวิศวกรรมครับ"
         }
     ]
 
 def clean_text_for_speech(text):
-    """ทำความสะอาดบทบรรยาย เพื่อให้เสียงอ่านพากย์ราบรื่นไม่มีสะดุด"""
-    # ลบตัวเลขหัวข้อ เช่น "1. " ออก
     text = re.sub(r'^\d+\.\s*', '', text)
-    # ลบสัญลักษณ์คณิตศาสตร์/LaTeX ออกคงเหลือคำอ่านภาษาไทย
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = text.replace("$", "").replace("{", "").replace("}", "").replace("^", "")
     text = text.replace("_", "").replace("\\", "").replace("(", "").replace(")", "")
@@ -206,59 +174,76 @@ def index():
 
 @app.route("/generate_video", methods=["POST"])
 def generate_video():
-    data = request.json
-    topic = data.get("topic", "การแปลงลาปลาซ")
+    try:
+        topic = request.form.get("topic", "").strip()
+        uploaded_file = request.files.get("file")
 
-    user_session_id = str(uuid.uuid4())[:8]
-    user_build_dir = os.path.join(BUILD_BASE_DIR, user_session_id)
-    os.makedirs(user_build_dir, exist_ok=True)
+        file_text = ""
+        if uploaded_file and uploaded_file.filename != "":
+            file_text = extract_text_from_file(uploaded_file)
+            if not topic:
+                topic = os.path.splitext(uploaded_file.filename)[0]
 
-    bullet_list = auto_generate_10_outline(topic)
+        if not topic and not file_text:
+            return jsonify({"success": False, "error": "กรุณากรอกหัวข้อ หรืออัปโหลดไฟล์เนื้อหา"})
 
-    total_slides = len(bullet_list)
-    video_clips = []
+        user_session_id = str(uuid.uuid4())[:8]
+        user_build_dir = os.path.join(BUILD_BASE_DIR, user_session_id)
+        os.makedirs(user_build_dir, exist_ok=True)
 
-    print(f"\n---> [Session {user_session_id}] เริ่มสร้างวิดีโอเรื่อง: {topic}")
-    for idx, slide_data in enumerate(bullet_list, start=1):
-        print(f"---> [Session {user_session_id}] กำลังประมวลผล สไลด์ {idx}/10...")
-        img_path = os.path.join(user_build_dir, f"slide_{idx}.png")
-        audio_path = os.path.join(user_build_dir, f"audio_{idx}.mp3")
+        # รวมข้อความสำหรับสร้างสไลด์
+        input_content = file_text if file_text else topic
 
-        # 1. วาดรูปภาพสไลด์เฉพาะส่วน points
-        generate_slide_image(topic, slide_data, idx, total_slides, img_path)
+        # ลองใช้ Gemini สร้างสไลด์ก่อน หากไม่ได้ผลค่อยใช้ตัวสำรอง
+        bullet_list = generate_slides_from_gemini(input_content)
+        if not bullet_list:
+            bullet_list = auto_generate_10_outline(topic)
 
-        # 2. ดึงบทบรรยายภาษาไทยเชิงลึก (Narration) ไปทำเสียงพากย์
-        speech_text = clean_text_for_speech(slide_data["narration"])
+        total_slides = len(bullet_list)
+        video_clips = []
 
-        tts = gTTS(text=speech_text, lang='th', slow=False)
-        tts.save(audio_path)
+        print(f"\n---> [Session {user_session_id}] เริ่มสร้างวิดีโอเรื่อง: {topic}")
+        for idx, slide_data in enumerate(bullet_list, start=1):
+            print(f"---> [Session {user_session_id}] กำลังประมวลผล สไลด์ {idx}/{total_slides}...")
+            img_path = os.path.join(user_build_dir, f"slide_{idx}.png")
+            audio_path = os.path.join(user_build_dir, f"audio_{idx}.mp3")
 
-        audio_clip = AudioFileClip(audio_path)
-        if hasattr(ImageClip(img_path), "with_duration"):
-            image_clip = ImageClip(img_path).with_duration(audio_clip.duration).with_audio(audio_clip)
-        else:
-            image_clip = ImageClip(img_path).set_duration(audio_clip.duration).set_audio(audio_clip)
-            
-        video_clips.append(image_clip)
+            generate_slide_image(topic, slide_data, idx, total_slides, img_path)
 
-    print(f"---> [Session {user_session_id}] กำลังรวมไฟล์วิดีโอ MP4...")
-    final_clip = concatenate_videoclips(video_clips, method="compose")
-    output_video_path = os.path.join(user_build_dir, "final_output.mp4")
-    
-    final_clip.write_videofile(
-        output_video_path, 
-        fps=15, 
-        codec="libx264", 
-        audio_codec="aac", 
-        preset="ultrafast", 
-        threads=4,
-        logger=None
-    )
-    
-    print(f"---> [Session {user_session_id}] เสร็จเรียบร้อย 100%!\n")
+            speech_text = clean_text_for_speech(slide_data["narration"])
+            tts = gTTS(text=speech_text, lang='th', slow=False)
+            tts.save(audio_path)
 
-    web_video_url = output_video_path.replace("\\", "/")
-    return jsonify({"success": True, "video_url": f"/{web_video_url}"})
+            audio_clip = AudioFileClip(audio_path)
+            if hasattr(ImageClip(img_path), "with_duration"):
+                image_clip = ImageClip(img_path).with_duration(audio_clip.duration).with_audio(audio_clip)
+            else:
+                image_clip = ImageClip(img_path).set_duration(audio_clip.duration).set_audio(audio_clip)
+                
+            video_clips.append(image_clip)
+
+        print(f"---> [Session {user_session_id}] กำลังรวมไฟล์วิดีโอ MP4...")
+        final_clip = concatenate_videoclips(video_clips, method="compose")
+        output_video_path = os.path.join(user_build_dir, "final_output.mp4")
+        
+        final_clip.write_videofile(
+            output_video_path, 
+            fps=15, 
+            codec="libx264", 
+            audio_codec="aac", 
+            preset="ultrafast", 
+            threads=4,
+            logger=None
+        )
+        
+        print(f"---> [Session {user_session_id}] เสร็จเรียบร้อย 100%!\n")
+
+        web_video_url = output_video_path.replace("\\", "/")
+        return jsonify({"success": True, "video_url": f"/{web_video_url}"})
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"success": False, "error": str(e)})
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
