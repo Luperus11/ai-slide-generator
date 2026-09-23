@@ -112,7 +112,7 @@ def generate_slides_from_gemini(topic_or_content):
         """
 
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
         )
         raw_response = response.text.strip()
