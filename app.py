@@ -110,7 +110,10 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=){GEMINI_API_KEY}"
+        # ปรับแก้การต่อ String URL เพื่อให้แน่ใจว่าไม่มีวงเล็บ Markdown หลุดเข้าไปแน่นอน
+        base_url = "[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=)"
+        url = base_url + GEMINI_API_KEY
+
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{
