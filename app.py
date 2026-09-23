@@ -5,6 +5,7 @@ import uuid
 import textwrap
 import json
 import requests
+import gc
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -25,14 +26,10 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-# อัปเดต URL Ngrok ล่าสุดจาก Colab
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
-
-# ดึง API Key จาก Environment บน Render
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
-# คลีนค่า Key เผื่อมีช่องว่างหรือขยะติดมา แล้วตั้งค่า SDK
 if GEMINI_API_KEY:
     clean_key = GEMINI_API_KEY.replace('[', '').replace(']', '').strip()
     genai.configure(api_key=clean_key)
@@ -116,7 +113,6 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        #เรียกใช้งานผ่าน SDK ของ Google โดยตรง (ไม่ต้องยิง REST URL เอง)
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(prompt)
 
@@ -139,7 +135,8 @@ def clean_text_for_speech(text):
     return text
 
 def generate_slide_image(topic, slide_data, slide_num, total_slides, output_path):
-    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=100)
+    # ปรับ DPI เป็น 80 เพื่อประหยัด RAM บน Render
+    fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=80)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 56.25)
     ax.axis("off")
@@ -183,7 +180,8 @@ def generate_slide_image(topic, slide_data, slide_num, total_slides, output_path
     ax.text(4, 2.5, clean_topic_footer, fontsize=9.5, color="#94A3B8", va="center")
 
     plt.savefig(output_path, bbox_inches="tight", pad_inches=0.1)
-    plt.close()
+    plt.close('all')
+    gc.collect()
 
 @app.route("/")
 def index():
@@ -215,7 +213,7 @@ def generate_video():
         if not bullet_list:
             return jsonify({
                 "success": False, 
-                "error": "ไม่สามารถสกัดเนื้อหาด้วย Gemini ได้ กรุณาเช็ก GEMINI_API_KEY บน Render"
+                "error": "ไม่สามารถสกัดเนื้อหาด้วย Gemini ได้ กรุณาตรวจสอบ GEMINI_API_KEY"
             })
 
         total_slides = len(bullet_list)
@@ -254,15 +252,22 @@ def generate_video():
         final_clip = concatenate_videoclips(video_clips, method="compose")
         output_video_path = os.path.join(user_build_dir, "final_output.mp4")
         
+        # ลด Threads และการกินสเปกเพื่อให้ Render ไม่ล่ม
         final_clip.write_videofile(
             output_video_path, 
-            fps=15, 
+            fps=10, 
             codec="libx264", 
             audio_codec="aac", 
             preset="ultrafast", 
-            threads=4,
+            threads=1,
             logger=None
         )
+
+        # เคลียร์ Memory
+        for clip in video_clips:
+            clip.close()
+        final_clip.close()
+        gc.collect()
 
         web_video_url = output_video_path.replace("\\", "/")
         return jsonify({"success": True, "video_url": f"/{web_video_url}"})
