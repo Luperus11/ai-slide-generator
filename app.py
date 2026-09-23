@@ -117,7 +117,7 @@ def generate_slides_from_groq(topic_or_content):
         }
         
         payload = {
-            "model": "llama-3.2-11b-vision-preview",
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {"role": "user", "content": prompt}
             ],
