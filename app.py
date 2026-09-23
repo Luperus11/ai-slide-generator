@@ -24,10 +24,11 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-# อัปเดต URL Ngrok ล่าสุดจาก Colab
-DEFAULT_COLAB_URL = "https://102f-34-7-7-122.ngrok-free.app/clone"
+# อัปเดต URL Ngrok ล่าสุดจาก Colab (เติม /clone ด้านท้าย)
+DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
+# ดึง API Key จาก Environment บน Render หรือใช้ค่า Default
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
 def setup_thai_font():
