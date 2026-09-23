@@ -29,12 +29,16 @@ os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
-# ตั้งค่า Gemini SDK โดยคลีนอักขระขยะออกจาก Key อัตโนมัติ
-RAW_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_API_KEY = re.sub(r'[^a-zA-Z0-9_\-]', '', RAW_GEMINI_KEY)
+# ดึงค่า GEMINI_API_KEY โดยตรงและลบเพียงช่องว่าง/เครื่องหมายคำพูดรอบนอก
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
 
 if GEMINI_API_KEY:
+    # พิมพ์ Log ออกมาดูความถูกต้องของ Key (แสดงเฉพาะ 4 ตัวแรกเพื่อความปลอดภัย)
+    prefix = GEMINI_API_KEY[:4] if len(GEMINI_API_KEY) >= 4 else "SHORT"
+    print(f"🔑 Gemini Key Detected: Prefix={prefix}..., Length={len(GEMINI_API_KEY)}")
     genai.configure(api_key=GEMINI_API_KEY)
+else:
+    print("⚠️ Warning: ไม่พบ GEMINI_API_KEY ใน Environment Variables")
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -115,7 +119,6 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        # เปลี่ยนไปใช้โมเดลรุ่น Flash-8b และส่งผ่าน SDK
         model = genai.GenerativeModel('gemini-1.5-flash-8b')
         response = model.generate_content(prompt)
 
