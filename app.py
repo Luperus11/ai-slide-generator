@@ -108,9 +108,9 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        clean_key = GEMINI_API_KEY.replace('[', '').replace(']', '').strip()
+        clean_key = re.sub(r'[\[\]"\'\s]', '', GEMINI_API_KEY)
 
-        # เรียกใช้งานผ่าน REST API พร้อมส่ง x-goog-api-key รองรับ Key ฟอร์แมต AQ... 100%
+        # แก้ไข URL ให้เป็น Pure String ไม่มี Markdown และวงเล็บหลุดเข้ามา
         url = "[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent)"
         headers = {
             "Content-Type": "application/json",
