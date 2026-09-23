@@ -14,7 +14,6 @@ from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
 from pypdf import PdfReader
 from docx import Document
-import google.generativeai as genai
 
 try:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
@@ -29,10 +28,6 @@ os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-
-if GEMINI_API_KEY:
-    clean_key = GEMINI_API_KEY.replace('[', '').replace(']', '').strip()
-    genai.configure(api_key=clean_key)
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -113,10 +108,29 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
+        clean_key = GEMINI_API_KEY.replace('[', '').replace(']', '').strip()
 
-        raw_response = response.text.strip()
+        # เรียกใช้งานผ่าน REST API พร้อมส่ง x-goog-api-key รองรับ Key ฟอร์แมต AQ... 100%
+        url = "[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent)"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": clean_key
+        }
+
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        }
+
+        res = requests.post(url, headers=headers, json=payload, timeout=60)
+        res_data = res.json()
+
+        if "error" in res_data:
+            print(f"Gemini REST Error: {res_data['error']}")
+            return None
+
+        raw_response = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
         clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
         slides_data = json.loads(clean_json_str)
         return slides_data
@@ -135,7 +149,6 @@ def clean_text_for_speech(text):
     return text
 
 def generate_slide_image(topic, slide_data, slide_num, total_slides, output_path):
-    # ปรับ DPI เป็น 80 เพื่อประหยัด RAM บน Render
     fig, ax = plt.subplots(figsize=(13.33, 7.5), dpi=80)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 56.25)
@@ -252,7 +265,6 @@ def generate_video():
         final_clip = concatenate_videoclips(video_clips, method="compose")
         output_video_path = os.path.join(user_build_dir, "final_output.mp4")
         
-        # ลด Threads และการกินสเปกเพื่อให้ Render ไม่ล่ม
         final_clip.write_videofile(
             output_video_path, 
             fps=10, 
@@ -263,7 +275,6 @@ def generate_video():
             logger=None
         )
 
-        # เคลียร์ Memory
         for clip in video_clips:
             clip.close()
         final_clip.close()
