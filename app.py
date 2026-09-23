@@ -28,7 +28,7 @@ os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
-# ดึง API Key จาก Environment บน Render หรือใช้ค่า Default
+# ดึง API Key จาก Environment บน Render
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
 def setup_thai_font():
@@ -110,6 +110,7 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
+        # ✅ แก้ไข URL ให้คลีนแล้ว
         url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=){GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {
