@@ -14,7 +14,6 @@ from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
 from pypdf import PdfReader
 from docx import Document
-import google.generativeai as genai
 
 try:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
@@ -28,17 +27,7 @@ os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
-
-# ดึงค่า GEMINI_API_KEY โดยตรงและลบเพียงช่องว่าง/เครื่องหมายคำพูดรอบนอก
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
-
-if GEMINI_API_KEY:
-    # พิมพ์ Log ออกมาดูความถูกต้องของ Key (แสดงเฉพาะ 4 ตัวแรกเพื่อความปลอดภัย)
-    prefix = GEMINI_API_KEY[:4] if len(GEMINI_API_KEY) >= 4 else "SHORT"
-    print(f"🔑 Gemini Key Detected: Prefix={prefix}..., Length={len(GEMINI_API_KEY)}")
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    print("⚠️ Warning: ไม่พบ GEMINI_API_KEY ใน Environment Variables")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip().strip('"').strip("'")
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -82,9 +71,9 @@ def extract_text_from_file(file):
         
     return clean_extracted_pdf_text(extracted_text)
 
-def generate_slides_from_gemini(topic_or_content):
-    if not GEMINI_API_KEY:
-        print("⚠️ Warning: ไม่พบ GEMINI_API_KEY ที่ถูกต้อง")
+def generate_slides_from_groq(topic_or_content):
+    if not GROQ_API_KEY:
+        print("⚠️ Warning: ไม่พบ GROQ_API_KEY ที่ถูกต้อง")
         return None
 
     try:
@@ -104,31 +93,52 @@ def generate_slides_from_gemini(topic_or_content):
         3. points ในแต่ละสไลด์ ต้องมี 4 ข้อเสมอ ในรูปแบบ "หัวข้อเน้นย้ำ: อธิบายรายละเอียดความรู้ ความหมาย หรือสูตรที่เกี่ยวข้องอย่างชัดเจน"
         4. narration ให้เขียนบทบรรยายสอนภาษาไทยแบบเป็นธรรมชาติ สรุปอธิบายสไลด์นั้นๆ อย่างกระชับ
 
-        ตอบกลับเป็น JSON Array เท่านั้น (ห้ามใส่คำว่า ```json):
-        [
-          {{
-            "sub_title": "1. ชื่อหัวข้อย่อยสั้นกระชับ",
-            "points": [
-              "คำศัพท์/หัวข้อ 1: อธิบายความหมายและรายละเอียดความรู้จริงจากเอกสาร",
-              "คำศัพท์/หัวข้อ 2: อธิบายรายละเอียดความรู้จริงจากเอกสาร",
-              "สูตร/แนวคิด 3: อธิบายรายละเอียดและวิธีการนำไปใช้",
-              "ข้อสรุป 4: สรุปสาระสำคัญประจำสไลด์นี้"
-            ],
-            "narration": "บทบรรยายภาษาไทยพากย์สอนเนื้อหาสไลด์นี้"
-          }}
-        ]
+        ตอบกลับในรูปแบบ JSON วัตถุโดยมีคีย์ "slides" ที่บรรจุ Array ดังนี้เท่านั้น:
+        {{
+          "slides": [
+            {{
+              "sub_title": "1. ชื่อหัวข้อย่อยสั้นกระชับ",
+              "points": [
+                "คำศัพท์/หัวข้อ 1: อธิบายความหมายและรายละเอียดความรู้จริงจากเอกสาร",
+                "คำศัพท์/หัวข้อ 2: อธิบายรายละเอียดความรู้จริงจากเอกสาร",
+                "สูตร/แนวคิด 3: อธิบายรายละเอียดและวิธีการนำไปใช้",
+                "ข้อสรุป 4: สรุปสาระสำคัญประจำสไลด์นี้"
+              ],
+              "narration": "บทบรรยายภาษาไทยพากย์สอนเนื้อหาสไลด์นี้"
+            }}
+          ]
+        }}
         """
 
-        model = genai.GenerativeModel('gemini-1.5-flash-8b')
-        response = model.generate_content(prompt)
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "response_format": {"type": "json_object"}
+        }
 
-        raw_response = response.text.strip()
-        clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
-        slides_data = json.loads(clean_json_str)
+        res = requests.post(url, headers=headers, json=payload, timeout=60)
+        res_data = res.json()
+
+        if "error" in res_data:
+            print(f"Groq REST Error: {res_data['error']}")
+            return None
+
+        raw_response = res_data["choices"][0]["message"]["content"]
+        parsed_json = json.loads(raw_response)
+        
+        slides_data = parsed_json.get("slides", parsed_json)
         return slides_data
 
     except Exception as e:
-        print(f"Gemini API Exception: {e}")
+        print(f"Groq API Exception: {e}")
         return None
 
 def clean_text_for_speech(text):
@@ -213,12 +223,12 @@ def generate_video():
 
         input_content = file_text if file_text else topic
 
-        bullet_list = generate_slides_from_gemini(input_content)
+        bullet_list = generate_slides_from_groq(input_content)
         
         if not bullet_list:
             return jsonify({
                 "success": False, 
-                "error": "ไม่สามารถสกัดเนื้อหาด้วย Gemini ได้ กรุณาตรวจสอบ GEMINI_API_KEY"
+                "error": "ไม่สามารถสกัดเนื้อหาด้วย Groq API ได้ กรุณาตรวจสอบ GROQ_API_KEY"
             })
 
         total_slides = len(bullet_list)
