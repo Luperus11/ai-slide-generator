@@ -116,9 +116,8 @@ def generate_slides_from_groq(topic_or_content):
             "Content-Type": "application/json"
         }
         
-        # เปลี่ยนเป็นโมเดลเสถียรมาตรฐาน llama3-8b-8192
         payload = {
-            "model": "llama3-8b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "user", "content": prompt}
             ],
