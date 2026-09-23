@@ -1,8 +1,7 @@
 Flask
-gunicorn
-google-genai
+requests
+matplotlib
 pypdf
 python-docx
-matplotlib
-requests
 moviepy
+google-generativeai
