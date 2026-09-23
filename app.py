@@ -24,7 +24,7 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-# อัปเดต URL Ngrok ล่าสุดจาก Colab (เติม /clone ด้านท้าย)
+# อัปเดต URL Ngrok ล่าสุดจาก Colab
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
@@ -110,7 +110,6 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        # ✅ แก้ไข URL ให้คลีนแล้ว
         url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=){GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {
