@@ -4,5 +4,5 @@ matplotlib
 pypdf
 python-docx
 moviepy
-google-genai
 gunicorn
+google-generativeai
