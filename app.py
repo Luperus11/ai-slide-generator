@@ -116,13 +116,14 @@ def generate_slides_from_groq(topic_or_content):
             "Content-Type": "application/json"
         }
         
+        # เปลี่ยนเป็นโมเดลเสถียรมาตรฐาน llama3-8b-8192
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama3-8b-8192",
             "messages": [
                 {"role": "user", "content": prompt}
             ],
             "response_format": {"type": "json_object"},
-            "max_completion_tokens": 4096
+            "max_tokens": 4096
         }
 
         res = requests.post(url, headers=headers, json=payload, timeout=60)
