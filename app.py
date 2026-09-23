@@ -13,6 +13,7 @@ from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
 from pypdf import PdfReader
 from docx import Document
+import google.generativeai as genai
 
 try:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
@@ -30,6 +31,11 @@ COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
 # ดึง API Key จาก Environment บน Render
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+# คลีนค่า Key เผื่อมีช่องว่างหรือขยะติดมา แล้วตั้งค่า SDK
+if GEMINI_API_KEY:
+    clean_key = GEMINI_API_KEY.replace('[', '').replace(']', '').strip()
+    genai.configure(api_key=clean_key)
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -110,24 +116,11 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        # กำหนด URL เป็น String สะอาดๆ เพียวๆ
-        url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=){GEMINI_API_KEY}"
+        #เรียกใช้งานผ่าน SDK ของ Google โดยตรง (ไม่ต้องยิง REST URL เอง)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
 
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
-        }
-
-        res = requests.post(url, headers=headers, json=payload, timeout=60)
-        res_data = res.json()
-
-        if "error" in res_data:
-            print(f"Gemini REST Error: {res_data['error']}")
-            return None
-
-        raw_response = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        raw_response = response.text.strip()
         clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
         slides_data = json.loads(clean_json_str)
         return slides_data
