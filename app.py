@@ -25,8 +25,8 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-# อ่าน URL จาก Environment Variable ของ Render ถ้าไม่มีจะใช้ ngrok URL ล่าสุด
-DEFAULT_COLAB_URL = "https://412a-35-247-133-183.ngrok-free.app/clone"
+# อ่าน URL จาก Environment Variable ของ Render ถ้าไม่มีจะใช้ ngrok URL ล่าสุดจาก Colab
+DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
