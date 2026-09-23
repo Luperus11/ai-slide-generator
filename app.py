@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
-from google import genai
 from pypdf import PdfReader
 from docx import Document
 
@@ -25,7 +24,8 @@ app = Flask(__name__)
 BUILD_BASE_DIR = "static/build"
 os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
-DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
+# อัปเดต URL Ngrok ล่าสุดจาก Colab
+DEFAULT_COLAB_URL = "https://102f-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
@@ -78,7 +78,6 @@ def generate_slides_from_gemini(topic_or_content):
         return None
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
         truncated_input = topic_or_content[:12000]
 
         prompt = f"""
@@ -110,17 +109,28 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        # เปลี่ยนมาใช้ gemini-1.5-flash ที่มีความเสถียรสูงสุด
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt,
-        )
-        raw_response = response.text.strip()
+        url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=){GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        }
+
+        res = requests.post(url, headers=headers, json=payload, timeout=60)
+        res_data = res.json()
+
+        if "error" in res_data:
+            print(f"Gemini REST Error: {res_data['error']}")
+            return None
+
+        raw_response = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
         clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
         slides_data = json.loads(clean_json_str)
         return slides_data
+
     except Exception as e:
-        print(f"Gemini API Error: {e}")
+        print(f"Gemini API Exception: {e}")
         return None
 
 def clean_text_for_speech(text):
