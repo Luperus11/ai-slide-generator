@@ -14,6 +14,7 @@ from matplotlib import font_manager
 from flask import Flask, render_template, request, jsonify
 from pypdf import PdfReader
 from docx import Document
+import google.generativeai as genai
 
 try:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
@@ -27,7 +28,13 @@ os.makedirs(BUILD_BASE_DIR, exist_ok=True)
 
 DEFAULT_COLAB_URL = "https://252b-34-7-7-122.ngrok-free.app/clone"
 COLAB_TTS_URL = os.getenv("COLAB_TTS_URL", DEFAULT_COLAB_URL).strip()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+# ตั้งค่า Gemini SDK โดยคลีนอักขระขยะออกจาก Key อัตโนมัติ
+RAW_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_API_KEY = re.sub(r'[^a-zA-Z0-9_\-]', '', RAW_GEMINI_KEY)
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 def setup_thai_font():
     thai_fonts = ['Tahoma', 'Leelawadee UI', 'Angsana New', 'Cordia New', 'TH Sarabun PSK', 'Arial']
@@ -73,15 +80,15 @@ def extract_text_from_file(file):
 
 def generate_slides_from_gemini(topic_or_content):
     if not GEMINI_API_KEY:
-        print("⚠️ Warning: ไม่พบ GEMINI_API_KEY")
+        print("⚠️ Warning: ไม่พบ GEMINI_API_KEY ที่ถูกต้อง")
         return None
 
     try:
-        truncated_input = topic_or_content[:12000]
+        truncated_input = topic_or_content[:10000]
 
         prompt = f"""
         คุณคืออาจารย์มหาวิทยาลัยผู้เชี่ยวชาญ
-        จงนำเนื้อหาเอกสารวิชาการต่อไปนี้ มาสกัดความรู้ สรุปสูตร คำนวณ แนวคิดหลัก และจัดทำเป็นสไลด์การสอนจำนวน 10 สไลด์เต็ม:
+        จงนำเนื้อหาเอกสารวิชาการต่อไปนี้ มาสกัดความรู้ สรุปสูตร คำนวณ แนวคิดหลัก และจัดทำเป็นสไลด์การสอนจำนวน 5 สไลด์เต็ม:
 
         === เนื้อหาเอกสารต้นฉบับ ===
         "{truncated_input}"
@@ -108,29 +115,11 @@ def generate_slides_from_gemini(topic_or_content):
         ]
         """
 
-        clean_key = re.sub(r'[\[\]"\'\s]', '', GEMINI_API_KEY)
+        # เปลี่ยนไปใช้โมเดลรุ่น Flash-8b และส่งผ่าน SDK
+        model = genai.GenerativeModel('gemini-1.5-flash-8b')
+        response = model.generate_content(prompt)
 
-        # แก้ไข URL ให้เป็น Plain Text URL สมบูรณ์
-        url = "[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent)"
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": clean_key
-        }
-
-        payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
-        }
-
-        res = requests.post(url, headers=headers, json=payload, timeout=60)
-        res_data = res.json()
-
-        if "error" in res_data:
-            print(f"Gemini REST Error: {res_data['error']}")
-            return None
-
-        raw_response = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        raw_response = response.text.strip()
         clean_json_str = re.sub(r'^```json\s*|^```\s*|\s*```$', '', raw_response, flags=re.MULTILINE)
         slides_data = json.loads(clean_json_str)
         return slides_data
